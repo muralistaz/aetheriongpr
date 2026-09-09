@@ -1,0 +1,124 @@
+{
+  "_meta": {
+    "description": "GPR sistem parametrlərinin mərkəzi bazası (yalnız GPR-əsaslı aşkarlama — maqnitometr alt-sistemi layihədən çıxarılıb). Hardware dəyişəndə (motor, antena, mikser və s.) YALNIZ bu fayl redaktə edilməlidir — kodun içində heç bir 'magic number' olmamalıdır.",
+    "hardware_revision": "rev_B_hexacopter_limesdr_gpr_only",
+    "last_updated": "2026-09-06",
+    "units_note": "Bütün tezliklər Hz-də, güc dəyərləri dBm-də, məsafələr metrdə saxlanılır"
+  },
+
+  "rf_frontend": {
+    "sdr_platform": "LimeSDR-USB",
+    "frequency_range": {
+      "rf_start_hz": 1.0e9,
+      "rf_stop_hz": 3.0e9,
+      "_comment": "Tam tarama diapazonu — antena (TSA900) bunu dəstəkləyir"
+    },
+    "sweep_strategy": {
+      "pll_step_hz": 40.0e6,
+      "nco_step_hz": 5.0e6,
+      "nco_substeps_per_pll": 8,
+      "_comment": "40MHz PLL retune + daxilində 8x5MHz NCO addımı = 400 tezlik nöqtəsi"
+    },
+    "tx_power": {
+      "value_dbm": 0.0,
+      "min_dbm": -20.0,
+      "max_dbm": 10.0,
+      "_comment": "LimeSDR TX gain — hardware/requlyativ məhdudiyyətə görə dəyişə bilər"
+    },
+    "rx_gain": {
+      "lna_gain_db": 30.0,
+      "pga_gain_db": 12.0,
+      "_comment": "RX gücləndirmə zənciri — antena/mikser dəyişəndə yenidən kalibrə edilməli"
+    },
+    "dwell_time_us": 500,
+    "settle_time_us": 50,
+    "excluded_bands": [
+      {
+        "start_hz": 863.0e6,
+        "stop_hz": 873.0e6,
+        "guard_band_hz": 2.0e6,
+        "reason": "RFD868x telemetriya linki (863-873MHz EU ISM) — GPR bu bandda heç bir siqnal ötürüb/qəbul etməməlidir"
+      }
+    ]
+  },
+
+  "return_to_mark": {
+    "drone_mass_kg": 9.5,
+    "max_lean_angle_deg": 35.0,
+    "motor_response_delay_s": 0.15,
+    "empirical_deceleration_ms2": null,
+    "_comment_deceleration": "null olduğu müddətcə NƏZƏRİ (konservativ) dəyər istifadə olunur — REAL SAHƏ TESTİNDƏN sonra bura ölçülmüş rəqəm yazılmalıdır",
+    "return_speed_ms": 0.5,
+    "confirmation_tolerance_m": 0.3,
+    "marker_gpio_pin": null,
+    "_comment_gpio": "Boya-sprey relesi üçün Jetson GPIO pin nömrəsi — hardware quraşdırılandan sonra təyin edilməli"
+  },
+
+  "uwb_boundary": {
+    "line_spacing_m": 1.0,
+    "_comment_spacing": "GPR antenasının effektiv görmə eninin 70-90%-i olmalıdır (overlap üçün)",
+    "sweep_angle_deg": 0.0,
+    "boundary_margin_m": 0.5,
+    "_comment_margin": "Sərhəd markerlərinə TOXUNMAMA marjı — real UWB ranging dəqiqliyinə görə sahə testində tənzimlənməli"
+  },
+
+  "antenna": {
+    "model": "TSA900",
+    "type": "Vivaldi UWB",
+    "dimensions_mm": {
+      "length": 195,
+      "width": 145,
+      "_comment": "TƏXMİNİDİR — real məhsul ölçüldükdən sonra dəqiqləşdirilməli"
+    },
+    "tx_rx_separation_min_m": 0.25,
+    "calibration": {
+      "phase_offset_rad": 0.0,
+      "amplitude_correction": 1.0,
+      "_comment": "Hər yeni antena tədarükündə sahə kalibrasiyası ilə yenilənməli"
+    }
+  },
+
+  "dsp_processing": {
+    "soil_permittivity": {
+      "value": 9.0,
+      "range_typical": [3.0, 25.0],
+      "_comment": "Quru qum ~3-5, nəm torpaq ~9-15, yaş gil ~15-25 — sahə testində ölçün"
+    },
+    "range_profile": {
+      "window_function": "hamming",
+      "zero_pad_factor": 4
+    },
+    "background_subtraction": {
+      "method": "static_calibration",
+      "min_calibration_scans": 5,
+      "recommended_calibration_scans": 10
+    },
+    "target_detection": {
+      "threshold_num_std": 4.0,
+      "min_range_separation_m": 0.15,
+      "_comment": "threshold_num_std artırsanız, false-positive azalır, amma zəif hədəflər gözdən qaça bilər"
+    }
+  },
+
+  "flight_platform": {
+    "frame_type": "hexacopter",
+    "arm_length_mm": 550,
+    "overall_diameter_mm": 1100,
+    "motor": {
+      "model": "SunnySky_V5208_340KV",
+      "count": 6,
+      "propeller": "17x5.5_carbon"
+    },
+    "battery": {
+      "chemistry": "Li-ion_21700",
+      "configuration": "6S6P",
+      "cell_model": "Molicel_P42A"
+    }
+  },
+
+  "network": {
+    "gpr_server_port": 12000,
+    "red_pitaya_scpi_port": 5000,
+    "reconnect_delay_s": 2
+  }
+}
