@@ -1,0 +1,50 @@
+[Unit]
+# ============================================================
+# DIY GPR — Əsas Pipeline Systemd Xidməti
+# ============================================================
+# Bu fayl Jetson Orin Nano-da /etc/systemd/system/ qovluğuna
+# köçürülməlidir (install_services.sh skripti bunu avtomatik edir).
+#
+# NİYƏ "After=network.target" YOX, "After=multi-user.target"
+# İSTİFADƏ OLUNUR: LimeSDR USB cihazıdır, şəbəkə xidmətlərindən
+# ASILI DEYİL. Network.target-i gözləmək, boot vaxtını lazımsız
+# uzadar. Yalnız çoxistifadəçi mühiti hazır olsun kifayətdir.
+# ============================================================
+
+Description=DIY GPR Main Detection Pipeline (LimeSDR + DSP + SAR)
+After=multi-user.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=jetson
+WorkingDirectory=/home/jetson/gpr_system
+
+# ExecStartPre: xidmət başlamazdan ƏVVƏL, LimeSDR-in USB-də
+# görünüb-görünmədiyini yoxlayır. Görünmürsə, xidmət başlamağa
+# CƏHD ETMİR (bu, "başladı, dərhal çökdü, yenidən başladı" tsiklini
+# əvvəlcədən kəsir).
+ExecStartPre=/bin/sh -c 'lsusb | grep -q "Lime Microsystems" || (echo "LimeSDR tapılmadı, gözlənilir..." && sleep 5)'
+
+ExecStart=/usr/bin/python3 /home/jetson/gpr_system/main_pipeline.py --config /home/jetson/gpr_system/system_config.json
+
+# Restart=on-failure: xidmət GÖZLƏNİLMƏDƏN çökərsə, avtomatik
+# yenidən başladılır. Restart=always İSTİFADƏ OLUNMUR, çünki bu,
+# operatorun QƏSDƏN dayandırdığı halları da yenidən başladardı —
+# on-failure yalnız GÖZLƏNİLMƏYƏN çöküşlərdə işə düşür.
+Restart=on-failure
+RestartSec=5
+
+# Xidmətin öz log-ları journalctl-ə yazılır (jetson üzərində
+# `journalctl -u gpr-main -f` ilə izlənilə bilər)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gpr-main
+
+# Prioritet: bu, sistemin ƏN VACIB prosesidir, aşağı "nice" dəyəri
+# (yüksək CPU prioriteti) verilir
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

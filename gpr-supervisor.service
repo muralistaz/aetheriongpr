@@ -1,0 +1,52 @@
+[Unit]
+# ============================================================
+# DIY GPR — Fault-Tolerance Supervisor Systemd Xidməti
+# ============================================================
+# Bu, gpr-main.service-dən AYRICA işləyən, müstəqil bir prosesdir.
+#
+# NİYƏ AYRI PROSES, gpr-main.service-in DAXİLİNDƏ deyil:
+# Əgər supervisor məntiqi əsas pipeline prosesinin İÇİNDƏ olsaydı,
+# əsas proses özü çökəndə (məsələn, bir DSP funksiyasında handle
+# edilməmiş exception), supervisor da ONUNLA BİRLİKDƏ ölərdi —
+# yəni, məhz ƏN LAZIM OLDUĞU ANDA (proses çökəndə) mövcud olmazdı.
+# Ayrı proses olaraq, supervisor əsas pipeline-ın öz statusundan
+# ASILI OLMADAN işləməyə davam edir və onu yenidən başlada bilir.
+# ============================================================
+
+Description=DIY GPR Fault-Tolerance Supervisor (Connection Watchdogs)
+After=gpr-main.service
+Requires=gpr-main.service
+
+[Service]
+Type=notify
+# ------------------------------------------------------------
+# YENİ: Type=notify + WatchdogSec — "asılıb qalma" aşkarlanması
+# ------------------------------------------------------------
+# Sadəcə Type=simple ilə, systemd YALNIZ prosesin ÇÖKMƏSİNİ (exit)
+# görə bilir. Əgər proses ASILIB QALSA (deadlock, sonsuz gözləmə),
+# "işləyir" statusunda qalar, systemd HEÇ NƏ etməz.
+#
+# Type=notify + WatchdogSec ilə, supervisor_main.py (fault_tolerance.py
+# vasitəsilə) hər check_interval-da systemd-ə "mən sağamam" (WATCHDOG=1)
+# siqnalı göndərir. Əgər bu siqnal WatchdogSec müddətindən çox
+# gecikərsə (yəni, proses ASILIB QALIBSA), systemd PROSESİ ÖZÜ
+# ÖLDÜRÜB YENİDƏN BAŞLADIR.
+#
+# WatchdogSec=10, supervisor-un check_interval_s=1.0 dəyərindən
+# TƏHLÜKƏSİZ marjla (10x) böyükdür — kiçik gecikmələr yalançı
+# restart-a səbəb olmasın deyə.
+WatchdogSec=10
+User=jetson
+WorkingDirectory=/home/jetson/gpr_system
+
+ExecStart=/usr/bin/python3 /home/jetson/gpr_system/supervisor_main.py
+
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gpr-supervisor
+
+[Install]
+WantedBy=multi-user.target
