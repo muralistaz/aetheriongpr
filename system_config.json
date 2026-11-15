@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "description": "GPR sistem parametrlərinin mərkəzi bazası (yalnız GPR-əsaslı aşkarlama — maqnitometr alt-sistemi layihədən çıxarılıb). Hardware dəyişəndə (motor, antena, mikser və s.) YALNIZ bu fayl redaktə edilməlidir — kodun içində heç bir 'magic number' olmamalıdır.",
+    "description": "GPR sistem parametrlərinin mərkəzi bazası. Hardware dəyişəndə YALNIZ bu fayl redaktə edilməlidir.",
     "hardware_revision": "rev_B_hexacopter_limesdr_gpr_only",
-    "last_updated": "2026-09-06",
+    "last_updated": "2026-11-15",
     "units_note": "Bütün tezliklər Hz-də, güc dəyərləri dBm-də, məsafələr metrdə saxlanılır"
   },
 
@@ -80,9 +80,10 @@
 
   "dsp_processing": {
     "soil_permittivity": {
-      "value": 9.0,
-      "range_typical": [3.0, 25.0],
-      "_comment": "Quru qum ~3-5, nəm torpaq ~9-15, yaş gil ~15-25 — sahə testində ölçün"
+      "initial_value": 9.0,
+      "is_dynamic": true,
+      "update_mechanism": "active_calculation_via_hyperbola_fitting",
+      "_comment": "Uçuş zamanı sistem tərəfindən dinamik hesablanıb avtomatik dəyişdirilir (sabit deyil)."
     },
     "range_profile": {
       "window_function": "hamming",
