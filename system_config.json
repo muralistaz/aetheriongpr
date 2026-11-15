@@ -1,125 +1,155 @@
-{
-  "_meta": {
-    "description": "GPR sistem parametrlərinin mərkəzi bazası. Hardware dəyişəndə YALNIZ bu fayl redaktə edilməlidir.",
-    "hardware_revision": "rev_B_hexacopter_limesdr_gpr_only",
-    "last_updated": "2026-11-15",
-    "units_note": "Bütün tezliklər Hz-də, güc dəyərləri dBm-də, məsafələr metrdə saxlanılır"
-  },
+"""
+============================================================
+DIY GPR — Vizuallaşdırma 2: Top-Down "Hədəf Xəritəsi" (GPS koordinatlı)
+============================================================
 
-  "rf_frontend": {
-    "sdr_platform": "LimeSDR-USB",
-    "frequency_range": {
-      "rf_start_hz": 1.0e9,
-      "rf_stop_hz": 3.0e9,
-      "_comment": "Tam tarama diapazonu — antena (TSA900) bunu dəstəkləyir"
-    },
-    "sweep_strategy": {
-      "pll_step_hz": 40.0e6,
-      "nco_step_hz": 5.0e6,
-      "nco_substeps_per_pll": 8,
-      "_comment": "40MHz PLL retune + daxilində 8x5MHz NCO addımı = 400 tezlik nöqtəsi"
-    },
-    "tx_power": {
-      "value_dbm": 0.0,
-      "min_dbm": -20.0,
-      "max_dbm": 10.0,
-      "_comment": "LimeSDR TX gain — hardware/requlyativ məhdudiyyətə görə dəyişə bilər"
-    },
-    "rx_gain": {
-      "lna_gain_db": 30.0,
-      "pga_gain_db": 12.0,
-      "_comment": "RX gücləndirmə zənciri — antena/mikser dəyişəndə yenidən kalibrə edilməli"
-    },
-    "dwell_time_us": 500,
-    "settle_time_us": 50,
-    "excluded_bands": [
-      {
-        "start_hz": 863.0e6,
-        "stop_hz": 873.0e6,
-        "guard_band_hz": 2.0e6,
-        "reason": "RFD868x telemetriya linki (863-873MHz EU ISM) — GPR bu bandda heç bir siqnal ötürüb/qəbul etməməlidir"
-      }
-    ]
-  },
+Bu modul, Modul 6-dan (SAR detection) gələn yerli (ENU, metr) koordinatlı
+hədəfləri, RTK GPS referans nöqtəsi ilə birləşdirərək REAL GPS
+koordinatlarına (lat/lon) çevirir və ANAMA-ya təqdim edilə biləcək
+peşəkar bir "top-down" xəritə şəkli yaradır.
+============================================================
+"""
 
-  "return_to_mark": {
-    "drone_mass_kg": 9.5,
-    "max_lean_angle_deg": 35.0,
-    "motor_response_delay_s": 0.15,
-    "empirical_deceleration_ms2": null,
-    "_comment_deceleration": "null olduğu müddətcə NƏZƏRİ (konservativ) dəyər istifadə olunur — REAL SAHƏ TESTİNDƏN sonra bura ölçülmüş rəqəm yazılmalıdır",
-    "return_speed_ms": 0.5,
-    "confirmation_tolerance_m": 0.3,
-    "marker_gpio_pin": null,
-    "_comment_gpio": "Boya-sprey relesi üçün Jetson GPIO pin nömrəsi — hardware quraşdırılandan sonra təyin edilməli"
-  },
+import numpy as np
+import pyproj
 
-  "uwb_boundary": {
-    "line_spacing_m": 1.0,
-    "_comment_spacing": "GPR antenasının effektiv görmə eninin 70-90%-i olmalıdır (overlap üçün)",
-    "sweep_angle_deg": 0.0,
-    "boundary_margin_m": 0.5,
-    "_comment_margin": "Sərhəd markerlərinə TOXUNMAMA marjı — real UWB ranging dəqiqliyinə görə sahə testində tənzimlənməli"
-  },
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon as MplPolygon
 
-  "antenna": {
-    "model": "TSA900",
-    "type": "Vivaldi UWB",
-    "dimensions_mm": {
-      "length": 195,
-      "width": 145,
-      "_comment": "TƏXMİNİDİR — real məhsul ölçüldükdən sonra dəqiqləşdirilməli"
-    },
-    "tx_rx_separation_min_m": 0.25,
-    "calibration": {
-      "phase_offset_rad": 0.0,
-      "amplitude_correction": 1.0,
-      "_comment": "Hər yeni antena tədarükündə sahə kalibrasiyası ilə yenilənməli"
-    }
-  },
 
-  "dsp_processing": {
-    "soil_permittivity": {
-      "initial_value": 9.0,
-      "is_dynamic": true,
-      "update_mechanism": "active_calculation_via_hyperbola_fitting",
-      "_comment": "Uçuş zamanı sistem tərəfindən dinamik hesablanıb avtomatik dəyişdirilir (sabit deyil)."
-    },
-    "range_profile": {
-      "window_function": "hamming",
-      "zero_pad_factor": 4
-    },
-    "background_subtraction": {
-      "method": "static_calibration",
-      "min_calibration_scans": 5,
-      "recommended_calibration_scans": 10
-    },
-    "target_detection": {
-      "threshold_num_std": 4.0,
-      "min_range_separation_m": 0.15,
-      "_comment": "threshold_num_std artırsanız, false-positive azalır, amma zəif hədəflər gözdən qaça bilər"
-    }
-  },
+# ============================================================
+# 1. TƏRS ÇEVİRMƏ: ENU (yerli, metr) -> GPS (lat/lon)
+# ============================================================
+def enu_to_gps(east_m, north_m, ref_lat, ref_lon):
+    """
+    Pyproj ilə Geodeziya Çevirməsi.
+    Modul 6-dakı gps_to_enu()-nun TƏRSİ. Yerli Cartesian (E, N)
+    koordinatlarını, referans nöqtəyə görə real lat/lon-a çevirir.
 
-  "flight_platform": {
-    "frame_type": "hexacopter",
-    "arm_length_mm": 550,
-    "overall_diameter_mm": 1100,
-    "motor": {
-      "model": "SunnySky_V5208_340KV",
-      "count": 6,
-      "propeller": "17x5.5_carbon"
-    },
-    "battery": {
-      "chemistry": "Li-ion_21700",
-      "configuration": "6S6P",
-      "cell_model": "Molicel_P42A"
-    }
-  },
+    QEYD: Təxmini düz-dünya (flat-Earth) hesablaması ləğv edilib. 
+    Maksimum dəqiqlik (xətanı sıfırlamaq) üçün WGS84 ellipsoidini 
+    nəzərə alan rəsmi 'pyproj' kitabxanasına keçid edilib.
+    """
+    proj_aeqd = pyproj.Proj(proj='aeqd', ellps='WGS84', datum='WGS84', lat_0=ref_lat, lon_0=ref_lon)
+    lon, lat = proj_aeqd(east_m, north_m, inverse=True)
+    return lat, lon
 
-  "network": {
-    "gpr_server_port": 12000,
-    "red_pitaya_scpi_port": 5000,
-    "reconnect_delay_s": 2
-  }
-}
+
+# ============================================================
+# 2. HƏDƏF XƏRİTƏSİ GENERATORU
+# ============================================================
+class TargetMapGenerator:
+    """
+    SAR detection nəticələrini GPS koordinatlı, ANAMA-təqdim-hazır
+    top-down xəritəyə çevirir.
+    """
+
+    def __init__(self, ref_lat, ref_lon, ref_alt=0.0):
+        self.ref_lat = ref_lat
+        self.ref_lon = ref_lon
+        self.ref_alt = ref_alt
+
+    def convert_detections_to_gps(self, detections):
+        gps_detections = []
+        for det in detections:
+            lat, lon = enu_to_gps(det["x_m"], det["y_m"], self.ref_lat, self.ref_lon)
+            det_with_gps = dict(det)
+            det_with_gps["lat"] = lat
+            det_with_gps["lon"] = lon
+            gps_detections.append(det_with_gps)
+        return gps_detections
+
+    def generate_map(
+        self,
+        detections,
+        survey_area_bounds_m=None,
+        boundary_polygon_vertices_m=None,
+        output_path="/mnt/user-data/outputs/target_map.png",
+        title="Mina Aşkarlama Sahəsi — Hədəf Xəritəsi",
+    ):
+        gps_detections = self.convert_detections_to_gps(detections)
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+
+        if boundary_polygon_vertices_m:
+            poly_patch = MplPolygon(
+                boundary_polygon_vertices_m, closed=True,
+                fill=True, facecolor="lightgray", edgecolor="black",
+                linewidth=1.5, alpha=0.3, label="Skan edilmiş sahə (UWB sərhəd)",
+            )
+            ax.add_patch(poly_patch)
+            marker_xs = [v[0] for v in boundary_polygon_vertices_m]
+            marker_ys = [v[1] for v in boundary_polygon_vertices_m]
+            ax.scatter(
+                marker_xs, marker_ys, c="blue", s=100, marker="^",
+                edgecolors="black", linewidths=1, zorder=4,
+                label="UWB sərhəd markeri",
+            )
+        elif survey_area_bounds_m:
+            x_min, x_max, y_min, y_max = survey_area_bounds_m
+            rect = plt.Rectangle(
+                (x_min, y_min), x_max - x_min, y_max - y_min,
+                fill=True, facecolor="lightgray", edgecolor="black",
+                linewidth=1.5, alpha=0.3, label="Skan edilmiş sahə",
+            )
+            ax.add_patch(rect)
+
+        if gps_detections:
+            marked_dets = [d for d in gps_detections if d.get("marked") is True]
+            unmarked_dets = [d for d in gps_detections if d.get("marked") is not True]
+
+            if unmarked_dets:
+                xs = [d["x_m"] for d in unmarked_dets]
+                ys = [d["y_m"] for d in unmarked_dets]
+                confidences = [d["confidence"] for d in unmarked_dets]
+                scatter_unmarked = ax.scatter(
+                    xs, ys, c=confidences, s=200, cmap="YlOrRd",
+                    edgecolors="black", linewidths=1.5, vmin=0, vmax=1,
+                    zorder=5, marker="X",
+                    label="Aşkarlanıb, HƏLƏ İŞARƏLƏNMƏYİB",
+                )
+                plt.colorbar(scatter_unmarked, ax=ax, label="Aşkarlama güvəni")
+
+            if marked_dets:
+                xs = [d["x_m"] for d in marked_dets]
+                ys = [d["y_m"] for d in marked_dets]
+                confidences = [d["confidence"] for d in marked_dets]
+                ax.scatter(
+                    xs, ys, c=confidences, s=280, cmap="YlOrRd",
+                    edgecolors="green", linewidths=3, vmin=0, vmax=1,
+                    zorder=6, marker="o",
+                    label="TƏSDİQLƏNİB VƏ FİZİKİ İŞARƏLƏNİB",
+                )
+
+            for det in gps_detections:
+                mark_status = "✓ İŞARƏLƏNİB" if det.get("marked") is True else "⚠ işarələnməyib"
+                label = (
+                    f"  {det['lat']:.6f}°, {det['lon']:.6f}°\n"
+                    f"  Dərinlik: {det['depth_m']:.2f}m | {mark_status}"
+                )
+                ax.annotate(
+                    label, (det["x_m"], det["y_m"]),
+                    fontsize=7, textcoords="offset points", xytext=(10, 5),
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
+                )
+
+        ax.set_xlabel("Şərq (m, referans nöqtəyə görə)")
+        ax.set_ylabel("Şimal (m, referans nöqtəyə görə)")
+        ax.set_title(
+            f"{title}\n"
+            f"Referans: {self.ref_lat:.6f}°, {self.ref_lon:.6f}° | "
+            f"{len(gps_detections)} hədəf aşkarlandı"
+        )
+        ax.set_aspect("equal")
+        ax.grid(True, linestyle="--", alpha=0.4)
+        if survey_area_bounds_m or boundary_polygon_vertices_m or gps_detections:
+            ax.legend(loc="upper right", fontsize=8)
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150)
+        plt.close(fig)
+
+        return gps_detections
+
